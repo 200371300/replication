@@ -1,0 +1,463 @@
+---
+title: "SMI205 Replication"
+author: '200371300'
+date: "2024-06-01"
+output: html_document
+---
+
+Rpubs Link: https://rpubs.com/a_ru/1191415
+
+Github Repository (replication code): https://github.com/200371300/replication
+
+This replication project is based on: Álvarez-Benjumea, A. (2023) "Uncovering hidden opinions: social norms and the expression of xenophobic attitudes" *European Sociological Review*. 39(3), pp. 449-463. doi: https://doi.org/10.1093/esr/jcac056
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                       cache=TRUE,
+                      comment=TRUE,
+                      message=FALSE,
+                      warning=FALSE)
+```
+
+Loading in packages:
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(ggeffects)
+library(plm)
+library(texreg)
+library(lme4) 
+library(eeptools)
+library(plyr)
+library(Rmisc)
+library(dplyr)
+library(doBy)
+library(skimr)
+library(sjPlot)
+```
+
+## Introduction
+
+The last 50 to 100 years have seen a shift in mainstream values centered around inclusiveness, general public condemnation of racism and social awareness. Alongside this there has been the parallel development of the Internet which has changed the the ways in which information flows, is accessed and has provided a level of global inter-connectivity never seen before.
+
+The ability to receive, produce and access content has, arguably unavoidably, resulted in large scale dissemination of hateful content, an important aspect in the engagement of these activities is the possible anonymity provided by the virtual world and the ease of access to communities where users conglomerate because of shared views/interests. This does not mean that this sort of content is only present in forums of shared interest or is not widely visible, on the contrary it is a fairly common occurrence in mainstream platforms, this places the responsibility to manage hateful content on those private businesses but ignores the fact that while hateful content may be frowned upon, incendiary & reactive content ultimately drives engagement and clicks. 
+
+Amalia Alvarez-Benjumea (2022) focuses on xenophobia and norm compliance in internet forums, specifically in Germany where issues around refugees have been part of the public discourse, Germany also presents a very unique case in terms of its past, Mocan & Rasche (2016), building on earlier studies that found the extent of anti-semitism 600 years ago to correlate with local support for the Nazi Party, found that individuals living in areas which had supported the Nazi Party in 1928, generally were more anti-semitic at the time of the study. As they highlight, it suggests sentiment`s can exist in local areas for long periods of time. They also find that sentiment generally improves when individuals believe their own economic position to be favorable.
+
+As Heribert Adam (2015) notes, because of Germanys past there is particular difficulty collecting data specifically relating to anti-semitism because of "Kommunikationslatenz", a concept referring to "German conformity pressure to express politically correct opinions", however, in today`s context this probably extends past solely anti-semitism towards general xenophobia, because of this, when classifying individuals according to whether they are likely anti/pro or neutral in regards to minority sentiment I expect there to be a portion of individuals with "anti" sentiment to not be captured and likely fall into the "neutral category". Further, he highlights that many right-wing ideologies "turned pro-israel and anti-muslim" in the 21st century.
+
+Boehnke, Hagan & Hefler (1998) highlight some contextual variables as predictors of levels of xenophobia, however they go further and draw a link between the roles and places in society with engagement in xenophobia, notably the role of identity, self-esteem and collective efficacy (informal social control), they find the most notable variables to be between school track and location of residence (East/West). 
+
+Johannes Beller (2020) focused on analyzing xenophobia across birth cohorts and found overall decreases across time, but substantial U-shaped birth cohort differences. This extension paper will focus on extending the confirmed hypothesis of Alvarez-Benjumea (2022), specifically focusing on the differences between East and West Germany and Individuals likely inclination, I also want to look at the relationship between the images shown and the hate score/probability of producing a comment categorized as banned, considering the change in direction of right-wing ideologies, I expect to find higher hate scores for specific images, however since the images themselves are not publicly available, the content of them is unknown. According to Freese & Peterson (2017), as I am using the same data but different methods/variables, this is a robustness check.
+
+
+## Methods & Data
+
+#### Dataset  
+
+Publicly available on OSF via a link provided by the author in the footnotes of the paper, it is focused on Germany in 2022. The author provided 2 data-sets, one being the raw data and the second having been treated by the author, in this paper I will be using the second, called MeanScoreData, they also provide all the code for treating the data, creating new variables and analysis.
+
+Reference: Alvarez-Benjumea, A. (2022, November 1). Uncovering Hidden Opinions: Social Norms and the Expression of Xenophobic Attitudes. https://doi.org/10.17605/OSF.IO/5V76R
+
+
+Upon loading in MeanScoreData, I use the same code provided to filter out observations which have been rated NA over 50% of the time, create a new variable called ban.n which is binary and refers to whether or not the majority of independent raters deemed it should be "banned" from the forum, and finally, to create a new variable called Type which refers to the authors best attempt in classifying participants according to what inclination toward immigration they have. I think here it is important to note the difference in group sizes, anti-immigration type participants being only 8% of the total population, pro-immigration being 31% and 61% being neutral. Here I recode the education variable to an English equivalent and create seperate, smaller datasets by location, either East or West containing the variables Time (Forum Page), Type, Gender, Group Age and Education.
+
+```{r, results = 'hide', include = FALSE}
+data=read.csv2("C:/Users/arubi/OneDrive/Desktop/smi205/MeanScoreData (1).csv", sep=";", quote="\"") 
+```
+```{r, results='hide'}
+data<-as_tibble(data)
+data<-data %>%
+  filter(PropNA<0.50)
+data$group <- factor(data$group, levels = c("A", "B")) 
+data$group <- relevel(data$group, ref="A")
+data$time <- as.factor(data$time) 
+data$ban.n<- 0
+data$ban.n[data$ban >=0.5] <- 1
+DataTypes<-data 
+DataTypes$association.n<-as.numeric(data$association) 
+DataTypes$type<-DataTypes$donated*DataTypes$association.n
+DataTypes$type<-as.factor(DataTypes$type)
+levels(DataTypes$type) <-  c("neutral", "anti", "pro")
+
+#            Above code part is part of Authors original replication package               #
+
+DataTypes$gender <- DataTypes$gender.f 
+DataTypes$gender <- as.factor(DataTypes$gender)
+DataTypes$edu <- recode(DataTypes$education,
+                        "Abitur" = "High School",
+                        "Weiterführende Schule nicht beendet" = "Primary",
+                        "Bachelorabschluss" = "Bachelors",
+                        "Berufliche Qualifikation" = "Vocational Qualification",
+                        "Masterabschluss" = "Masters")
+DataTypes$edu <- as.factor(DataTypes$edu)
+DataTypes$image <- as.factor(DataTypes$image)
+DataTypes$East <- as.factor(DataTypes$East)
+W <- DataTypes %>%
+  filter(East == "West")
+E <- DataTypes %>% 
+  filter(East == "East")
+```
+
+```{r, results = 'hide', include=FALSE}
+E2 <- E[, c("ID","score", "time", "type", "gender", "age", "group","edu","ban.n","image")]
+E2 <- na.omit(E2)
+E2$time <- as.factor(E2$time)  
+E2$type <- as.factor(E2$type)  
+E2$gender <- as.factor(E2$gender)  
+E2$age <- as.factor(E2$age)  
+E2$group <- as.factor(E2$group)  
+#making the EAST germany dataset#
+ECOMB <-  E2 %>%
+  select(image, group, gender, type, age, edu,time) %>%
+  distinct()
+W2 <- W[, c("ID","score", "time", "type", "gender", "age", "group", "edu", "ban.n","image")]
+W2 <- na.omit(W2)
+W2$time <- as.factor(W2$time)  
+W2$type <- as.factor(W2$type)  
+W2$gender <- as.factor(W2$gender)  
+W2$age <- as.factor(W2$age)  
+W2$group <- as.factor(W2$group)  
+#making the WEST germany dataset#
+WCOMB <- W2 %>%
+  select(image, group, gender, type, age, edu,time) %>%
+  distinct()
+```
+
+For the purposes of Graph 1, giving a  general look at how the hate score behaves across different groups I created an average hate score for each unique combination of time, gender, group and type, I did not include other variables as they very quickly made it difficult to visualize data with too many observations. However, this graph does provide insight in how differently residents in east and west Germany further engage after viewing xenophobic content, the steepest increases generally coming from east Germany, looking at the neutral type the average hate score increases by forum 2 for both groups but afterwards reduces for the unexposed group while increasing for the exposed group, especially for men and those living in east Germany, this can point to the emboldening effect mentioned by the Alvarez-Benjumea but I expect part of it to be explained by a proportion of individuals who really belong to the `anti` group but did not provide enough data for the author to infer this.
+```{r}
+#TIME#
+eavgt <- aggregate(score ~ time + group+ gender+type, data = E2, FUN = mean)
+eavgt$avgt <- eavgt$score
+eavgt$score <- NULL
+ECOMB <- merge(ECOMB, eavgt, by = c("time","gender","group", "type"), all.x = TRUE)
+
+wavgt <- aggregate(score ~ time + group+ gender+type, data = W2, FUN = mean)
+wavgt$avgt <- wavgt$score
+wavgt$score <- NULL
+WCOMB <- merge(WCOMB, wavgt, by = c("time","gender","group","type"), all.x = TRUE)
+
+ggplot() +
+  geom_point(data = WCOMB, aes(x = time, y = avgt, color =  "west", shape = gender)) +
+  geom_point(data = ECOMB, aes(x = time, y = avgt, color = "east", shape = gender)) +
+  geom_line(data = WCOMB, aes(x = time, y = avgt, color = "west", group = interaction(gender, type, group)), linetype = "solid") +
+  geom_line(data = ECOMB, aes(x = time, y = avgt, color = "east", group = interaction(gender, type, group)), linetype = "solid") +
+  labs(
+    title = "Graph 1: Average Hate Score by Group, Gender, Time & Type",
+    x = "Time",
+    y = "Hate Score"
+  ) +
+  scale_color_manual(values = c("west" = "blue", "east" = "red")) +
+  theme_minimal()+
+  facet_grid(group~type)
+```
+
+Graph 2 represents the same averages but across what image is shown, as expected the average highest scores generally correspond to the Anti-immigrant sentiment in the exposed group, which also has the most erratic movement across images. Across all groups there is a consistently relatively lower score for image 13, however, looking by likely sentiment type, across both groups there is relatively similar averages.
+
+```{r}
+#IMAGE#
+eavgi <- aggregate(score ~ image + group+ gender+type, data = E2, FUN = mean)
+eavgi$avgi <- eavgi$score
+eavgi$score <- NULL
+ECOMB <- merge(ECOMB, eavgi, by = c("image","gender","group", "type"), all.x = TRUE)
+
+wavgi <- aggregate(score ~ image + group+ gender+type, data = W2, FUN = mean)
+wavgi$avgi <- wavgi$score
+wavgi$score <- NULL
+WCOMB <- merge(WCOMB, wavgi, by = c("image","gender","group","type"), all.x = TRUE)
+
+ggplot() +
+  geom_point(data = WCOMB, aes(x = image, y = avgi, color =  "west", shape = gender)) +
+  geom_point(data = ECOMB, aes(x = image, y = avgi, color = "east", shape = gender)) +
+  geom_line(data = WCOMB, aes(x = image, y = avgi, color = "west", group = interaction(gender, type, group)), linetype = "solid") +
+  geom_line(data = ECOMB, aes(x = image, y = avgi, color = "east", group = interaction(gender, type, group)), linetype = "solid") +
+  labs(
+    title = "Graph 2: Average Hate Score by Group, Gender, Image & Type",
+    x = "Image",
+    y = "Hate Score"
+  ) +
+  scale_color_manual(values = c("west" = "blue", "east" = "red")) +
+  theme_minimal()+
+  facet_grid(group~type)
+```
+
+### Methods
+The Author uses a Linear mixed effects model to account for random and fixed effects, considering the variable ban.n is binary I considered using logistic regression but ultimately found a significant difference between the Authors model and the logistic regression model in terms of AIC & BIC score. I also used both methods for my model focusing on images shown and found the linear mixed effects model to have a better fit.
+
+```{r, include = FALSE}
+Ban.exposed.increase <- lmer(ban.n ~ time*group+ (1|ID),data,REML=F)
+model <- glm(ban.n ~ time * time * group, data = DataTypes, family = binomial)
+
+AIC(model, Ban.exposed.increase)
+BIC(model,Ban.exposed.increase)
+
+bimg2 <- lmer(ban.n ~ image*group*time+(1|ID), data = DataTypes, REML = F)
+
+```
+```{r}
+mod2 <- glm(ban.n ~ image*group+time + (1|ID), data = DataTypes, family = binomial)
+bimg <- lmer(ban.n ~ image*group+time+(1|ID), data = DataTypes, REML = F)
+AIC(mod2, bimg)
+BIC(mod2, bimg)
+```
+```{r, include=FALSE, results=FALSE}
+AIC(bimg, bimg2)
+BIC(bimg, bimg2)
+```
+
+Here I also look at the distribution of datapoints across several categories by East and West Germany to provide a better understanding who the population is made out of, for the education categories in East Germany the largest gaps are of individuals who have only received Primary Education and the one with least gaps being Vocational Qualification, this demonstrates that most of the population sampled in East Germany have received some sort of further education/training, more importantly it shows engagement in up-skilling across years and groups, interestingly it also points out the lack of datapoints corresponding to anti-immigrant sentiment in the age groups from 46+ (other than those whose education level corresponds to Vocational Qualification and a handful of observations - 10 - corresponding to Masters & Bachelors). West Germany`s only notable gaps are also in the 55+ Anti-immigrant sentiment regardless of education level (other than Masters).
+
+```{r}
+ggplot(E2, aes(x = time, y = score, color = group)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm") +
+  facet_grid(edu ~ type + age) +
+  labs(x = "Time",
+       y = "Score") +
+  theme_minimal()
+
+ggplot(W2, aes(x = time, y = score, color = group)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm") +
+  facet_grid(edu ~ type + age) +
+  labs(x = "Time",
+       y = "Score") +
+  theme_minimal()
+
+```
+
+```{r, include = FALSE} 
+DataTypes$pred <- predict(Ban.exposed.increase)
+DataTypes %>%
+  filter(!is.na(East)) %>%
+  ggplot(aes(x = time, y = pred, colour = type)) +
+  geom_point() +
+  facet_grid(group ~ East) +
+  labs(x = "Time",
+       y = "% of change in ban.n") 
+```
+
+### Results  
+Table 1 presents the results of a linear mixed methods regression of the dependent variable ban.n over the effects of group, image and time while considering interactions of group and image allowing for random intercepts by ID, I considered including interactions for time but found the model to be a better fit when including time as a fixed effect. I should note the reference categories are Image 3, Group A (Unexposed group) and Time 1 (first forum). None of the interactions between image and group are particularly strong or statistically significant which suggests the effect of image on ban.n does not depend much on group, as the intercept is near zero we can assume the probability of producing a banned comment for the reference category to be nearly nonexistent, among the image levels for group A, only image 19 shows a statistically significant negative effect on the probability of producing a banned comment, image 9 also has a negative effect but it is not statistically significant. Looking at image by group B we find the opposite, images 9 and 19 have a positive effect on the probabilities of producing banned comments, however, they are not statistically significant, here it is also worth noting the effect of Group B to be both positive and statistically significant. Time is the variable with most statistically significant effects, Time 3,4 & 5 having positive effects on the probability of producing a banned comment.
+
+```{r}
+tab_model(bimg, title = "Table 1", dv.labels = "Dependent Variable: ban.n")
+```
+
+Looking at Graph 3 helps visualize the distribution of this probability, there is a clear lack of Type "anti" participants in Group A, belonging to East Germany, in fact those data-points have generally some of the lowest probability in producing Banned comments. Looking solely at East Germany, there is a general lack of "anti" type observations, further, those belonging to the "neutral" category consistently have higher probability, regardless of exposure group, and there is a lot of overlap between these data-points. West Germany on the other hand has a much more varied distribution and many more observations per type, while there is still some overlap, it is significantly more divided, for example there is not nearly as much overlap between "anti" and "pro" type observations.
+
+```{r}
+DataTypes$ipred <- predict(bimg)
+DataTypes %>%
+  filter(!is.na(East))%>%
+  ggplot(aes(x = image, y = ipred, colour = type))+
+  geom_point()+
+  facet_grid(group~East)+
+  labs(title = "Graph 3: Predicted Increase by Image, Colored by Type, Faceted By Group & Location",
+       x = "Time",
+       y = "Predicted Increase")
+```
+
+## Conclusion  
+Overall I did not find a significant relationship between images shows and the probability of producing a banned comment, however there are some limitations in the data, these being the difference in the sample size by East & West Germany, East has 1566 observations while West has 9069, a very significant difference in participants from each Part of Germany, a bigger issue i believe comes from the classifying of participants by what Type they are believed to correspond to, considering "Kommunikationslatenz", it is difficult to believe that every participant answered completely honestly and was successfully captured, further to this, Heribert Adam (2015) points out the difference in political education practiced in East compared to West Germany, "Such anti-racist political education was not practiced in East Ger-many, which took for granted that it had overcome racist predilections by deﬁnition. A socialist state, it was argued, was immune to fascist tendencies that were seen as a product of capitalism." Considering both of these points, It can provide an explanation as to the lack of data-points corresponding to "anti" type in East Germany, especially when many more "neutral" observations consistently provide higher probability in engaging in xenophobia. 
+
+
+## References
+
+Adam, H. (2015). Xenophobia, Asylum Seekers, and Immigration Policies in Germany. Nationalism and Ethnic Politics, 21(4), pp. 446–464. https://doi.org/10.1080/13537113.2015.1095528
+
+Álvarez-Benjumea, A. (2023) Uncovering hidden opinions: social norms and the expression of xenophobic attitudes. European Sociological Review, 39(3), pp. 449–463, https://doi.org/10.1093/esr/jcac056
+
+Beller, J. (2020). Xenophobia trends in Germany: Increasing negative attitude towards foreigners in younger birth cohorts. The Social Science Journal, 60(2), 172–178. https://doi.org/10.1080/03623319.2020.1735855 
+
+Boehnke, K., Hagan, J. & Hefler, G. (2010) On the Development of Xenophobia in Germany: The Adolescent Years. Journal of Social Issues, 54(3), pp. 585-602, doi: https://doi.org/10.1111/j.1540-4560.1998.tb01237.x  
+
+Freese, J., & Peterson, D. (2017). Replication in social science. Annual Review of Sociology, 43, pp. 147-165, doi: 10.1146.
+
+Mocan, N., Raschke, C.(2016). Economic well-being and anti-Semitic, xenophobic, and racist attitudes in Germany. European Journal of Law & Economics, 41, pp. 1–63. doi: https://doi.org/10.1007/s10657-015-9521-0
+
+
+## Appendix 1: My Environment
+```{r}
+sessionInfo()
+```
+
+## Appendix 2: Full code
+```{r, eval= FALSE}
+library(tidyverse)
+library(ggeffects)
+library(plm)
+library(texreg)
+library(lme4) 
+library(eeptools)
+library(plyr)
+library(Rmisc)
+library(dplyr)
+library(doBy)
+library(skimr)
+library(sjPlot)
+
+data=read.csv2("C:/Users/arubi/OneDrive/Desktop/smi205/MeanScoreData.csv", sep=";", quote="\"") 
+data<-as_tibble(data)
+data<-data %>%
+  filter(PropNA<0.50)
+data$group <- factor(data$group, levels = c("A", "B")) 
+data$group <- relevel(data$group, ref="A")
+data$time <- as.factor(data$time) 
+data$ban.n<- 0
+data$ban.n[data$ban >=0.5] <- 1
+DataTypes<-data 
+DataTypes$association.n<-as.numeric(data$association) 
+DataTypes$type<-DataTypes$donated*DataTypes$association.n
+DataTypes$type<-as.factor(DataTypes$type)
+levels(DataTypes$type) <-  c("neutral", "anti", "pro")
+
+#            Above code part is part of Authors original replication package               #
+
+DataTypes$gender <- DataTypes$gender.f 
+DataTypes$gender <- as.factor(DataTypes$gender)
+DataTypes$edu <- recode(DataTypes$education,
+                        "Abitur" = "High School",
+                        "Weiterführende Schule nicht beendet" = "Primary",
+                        "Bachelorabschluss" = "Bachelors",
+                        "Berufliche Qualifikation" = "Vocational Qualification",
+                        "Masterabschluss" = "Masters")
+DataTypes$edu <- as.factor(DataTypes$edu)
+DataTypes$image <- as.factor(DataTypes$image)
+DataTypes$East <- as.factor(DataTypes$East)
+W <- DataTypes %>%
+  filter(East == "West")
+E <- DataTypes %>% 
+  filter(East == "East")
+
+E2 <- E[, c("ID","score", "time", "type", "gender", "age", "group","edu","ban.n","image")]
+E2 <- na.omit(E2)
+E2$time <- as.factor(E2$time)  
+E2$type <- as.factor(E2$type)  
+E2$gender <- as.factor(E2$gender)  
+E2$age <- as.factor(E2$age)  
+E2$group <- as.factor(E2$group)  
+#just making the EAST germany dataset#
+ECOMB <-  E2 %>%
+  select(image, group, gender, type, age, edu,time) %>%
+  distinct()
+W2 <- W[, c("ID","score", "time", "type", "gender", "age", "group", "edu", "ban.n","image")]
+W2 <- na.omit(W2)
+W2$time <- as.factor(W2$time)  
+W2$type <- as.factor(W2$type)  
+W2$gender <- as.factor(W2$gender)  
+W2$age <- as.factor(W2$age)  
+W2$group <- as.factor(W2$group)  
+#just making the WEST germany dataset#
+WCOMB <- W2 %>%
+  select(image, group, gender, type, age, edu,time) %>%
+  distinct()
+
+#TIME#
+eavgt <- aggregate(score ~ time + group+ gender+type, data = E2, FUN = mean)
+eavgt$avgt <- eavgt$score
+eavgt$score <- NULL
+ECOMB <- merge(ECOMB, eavgt, by = c("time","gender","group", "type"), all.x = TRUE)
+
+wavgt <- aggregate(score ~ time + group+ gender+type, data = W2, FUN = mean)
+wavgt$avgt <- wavgt$score
+wavgt$score <- NULL
+WCOMB <- merge(WCOMB, wavgt, by = c("time","gender","group","type"), all.x = TRUE)
+
+ggplot() +
+  geom_point(data = WCOMB, aes(x = time, y = avgt, color =  "west", shape = gender)) +
+  geom_point(data = ECOMB, aes(x = time, y = avgt, color = "east", shape = gender)) +
+  geom_line(data = WCOMB, aes(x = time, y = avgt, color = "west", group = interaction(gender, type, group)), linetype = "solid") +
+  geom_line(data = ECOMB, aes(x = time, y = avgt, color = "east", group = interaction(gender, type, group)), linetype = "solid") +
+  labs(
+    title = "Graph 1: Average Hate Score by Group, Gender, Time & Type",
+    x = "Time",
+    y = "Hate Score"
+  ) +
+  scale_color_manual(values = c("west" = "blue", "east" = "red")) +
+  theme_minimal()+
+  facet_grid(group~type)
+
+#IMAGE#
+eavgi <- aggregate(score ~ image + group+ gender+type, data = E2, FUN = mean)
+eavgi$avgi <- eavgi$score
+eavgi$score <- NULL
+ECOMB <- merge(ECOMB, eavgi, by = c("image","gender","group", "type"), all.x = TRUE)
+
+wavgi <- aggregate(score ~ image + group+ gender+type, data = W2, FUN = mean)
+wavgi$avgi <- wavgi$score
+wavgi$score <- NULL
+WCOMB <- merge(WCOMB, wavgi, by = c("image","gender","group","type"), all.x = TRUE)
+
+ggplot() +
+  geom_point(data = WCOMB, aes(x = image, y = avgi, color =  "west", shape = gender)) +
+  geom_point(data = ECOMB, aes(x = image, y = avgi, color = "east", shape = gender)) +
+  geom_line(data = WCOMB, aes(x = image, y = avgi, color = "west", group = interaction(gender, type, group)), linetype = "solid") +
+  geom_line(data = ECOMB, aes(x = image, y = avgi, color = "east", group = interaction(gender, type, group)), linetype = "solid") +
+  labs(
+    title = "Graph 2: Average Hate Score by Group, Gender, Image & Type",
+    x = "Image",
+    y = "Hate Score"
+  ) +
+  scale_color_manual(values = c("west" = "blue", "east" = "red")) +
+  theme_minimal()+
+  facet_grid(group~type)
+
+Ban.exposed.increase <- lmer(ban.n ~ time*group+ (1|ID),data,REML=F)
+model <- glm(ban.n ~ time * time * group, data = DataTypes, family = binomial)
+
+AIC(model, Ban.exposed.increase)
+BIC(model,Ban.exposed.increase)
+
+bimg2 <- lmer(ban.n ~ image*group*time+(1|ID), data = DataTypes, REML = F)
+
+mod2 <- glm(ban.n ~ image*group+time + (1|ID), data = DataTypes, family = binomial)
+bimg <- lmer(ban.n ~ image*group+time+(1|ID), data = DataTypes, REML = F)
+AIC(mod2, bimg)
+BIC(mod2, bimg)
+AIC(bimg, bimg2)
+BIC(bimg, bimg2)
+
+ggplot(E2, aes(x = time, y = score, color = group)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm") +
+  facet_grid(edu ~ type + age) +
+  labs(x = "Time",
+       y = "Score") +
+  theme_minimal()
+
+ggplot(W2, aes(x = time, y = score, color = group)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm") +
+  facet_grid(edu ~ type + age) +
+  labs(x = "Time",
+       y = "Score") +
+  theme_minimal()
+
+DataTypes$pred <- predict(Ban.exposed.increase)
+DataTypes %>%
+  filter(!is.na(East)) %>%
+  ggplot(aes(x = time, y = pred, colour = type)) +
+  geom_point() +
+  facet_grid(group ~ East) +
+  labs(x = "Time",
+       y = "% of change in ban.n") 
+
+tab_model(bimg, title = "Table 1", dv.labels = "Dependent Variable: ban.n")
+
+DataTypes$ipred <- predict(bimg)
+DataTypes %>%
+  filter(!is.na(East))%>%
+  ggplot(aes(x = image, y = ipred, colour = type))+
+  geom_point()+
+  facet_grid(group~East)+
+  labs(title = "Graph 3: Predicted increase by Image, Colored by Type, Faceted By Group & Location",
+       x = "Time",
+       y = "Predicted increase")
+```
+
+
+
+
+
